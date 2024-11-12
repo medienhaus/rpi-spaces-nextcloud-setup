@@ -1,0 +1,72 @@
+services:
+
+  # ------------------------------------------------------
+  # medienhaus-spaces
+  # ------------------------------------------------------
+
+  medienhaus-spaces:
+    build:
+      context: ./medienhaus-spaces
+      target: "production-runner"
+    container_name: medienhaus-spaces
+    restart: unless-stopped
+    depends_on:
+      - traefik
+    environment:
+      NODE_ENV: "production"
+    labels:
+      traefik.enable: "true"
+      #traefik.http.routers.medienhaus-spaces.entrypoints: "web"
+      traefik.http.routers.medienhaus-spaces.entrypoints: "websecure"
+      traefik.http.routers.medienhaus-spaces.tls.certresolver: "myresolver"
+      traefik.http.routers.medienhaus-spaces.rule: "Host(`${SPACES_HOSTNAME}`)"
+    #ports:
+    #  - "3000:3000"
+    volumes:
+      - ./config/medienhaus-spaces.config.js:/app/config.js:ro
+      - ./assets/_userOverrides.css:/app/assets/_userOverrides.css:ro
+
+  element-medienhaus-spaces:
+    image: vectorim/element-web:v1.11.57
+    container_name: element-medienhaus-spaces
+    restart: unless-stopped
+    depends_on:
+      - traefik
+      - medienhaus-spaces
+    labels:
+      traefik.enable: "true"
+      #traefik.http.routers.element-medienhaus-spaces.entrypoints: "web"
+      traefik.http.routers.element-medienhaus-spaces.entrypoints: "websecure"
+      traefik.http.routers.element-medienhaus-spaces.tls.certresolver: "myresolver"
+      traefik.http.routers.element-medienhaus-spaces.rule: "Host(`${SPACES_HOSTNAME}`) && PathPrefix(`/element/`)"
+      traefik.http.routers.element-medienhaus-spaces.middlewares: "element-medienhaus-spaces-stripprefix@docker,element-medienhaus-spaces-headers@docker"
+      traefik.http.middlewares.element-medienhaus-spaces-stripprefix.stripprefix.prefixes: "/element"
+      # @NOTE: element-web configuration best practices according to the repository’s README
+      # https://github.com/element-hq/element-web?tab=readme-ov-file#configuration-best-practices
+      # https://doc.traefik.io/traefik/middlewares/http/headers/#general
+      traefik.http.middlewares.element-medienhaus-spaces-headers.headers.customframeoptionsvalue: "sameorigin"
+      traefik.http.middlewares.element-medienhaus-spaces-headers.headers.contenttypenosniff: "true"
+      traefik.http.middlewares.element-medienhaus-spaces-headers.headers.browserxssfilter: "true"
+      traefik.http.middlewares.element-medienhaus-spaces-headers.headers.contentsecuritypolicy: "frame-ancestors 'self'"
+    volumes:
+      - ./config/element-medienhaus-spaces.json:/app/config.json:ro
+
+# ------------------------------------------------------
+# networks (example)
+# ------------------------------------------------------
+
+#networks:
+#  default:
+#    name: medienhaus-spaces
+#    driver: bridge
+#    external: true
+
+# ------------------------------------------------------
+# volumes (example)
+# ------------------------------------------------------
+
+#volumes:
+#  medienhaus-spaces--node_modules:
+#    driver: local
+#  medienhaus-spaces--.next:
+#    driver: local

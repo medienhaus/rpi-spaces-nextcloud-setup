@@ -1,0 +1,324 @@
+#include:
+#  - docker-include.medienhaus-spaces.websecure.yml
+#  - docker-include.medienhaus-api.websecure.yml
+#  - docker-include.medienhaus-cms.websecure.yml
+
+services:
+
+  # ------------------------------------------------------
+  # traefik
+  # ------------------------------------------------------
+
+  traefik:
+    image: traefik:latest
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      #- "--log.level=DEBUG"
+      #- "--api.dashboard=true"
+      #- "--api.debug=true"
+      #- "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=${ADMIN_CONTACT_LETSENCRYPT}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    #labels:
+    #  traefik.enable: "true"
+    #  #traefik.http.routers.api.entrypoints: "web"
+    #  traefik.http.routers.api.entrypoints: "websecure"
+    #  traefik.http.routers.api.tls.certresolver: "myresolver"
+    #  traefik.http.routers.api.rule: "Host(`traefik.${BASE_URL}`)"
+    #  traefik.http.routers.api.service: "api@internal"
+    ports:
+      - "80:80"
+      #- "8080:8080"
+      - "443:443"
+      #- "8443:8443"
+    volumes:
+      - ./data/letsencrypt:/letsencrypt:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # ------------------------------------------------------
+  # lldap
+  # ------------------------------------------------------
+
+  lldap:
+    image: lldap/lldap:latest
+    container_name: lldap
+    restart: unless-stopped
+    depends_on:
+      - traefik
+    environment:
+      #LLDAP_VERBOSE: true
+      LLDAP_LDAP_PORT: "${LDAP_PORT}"
+      LLDAP_HTTP_PORT: "80"
+      LLDAP_JWT_SECRET: "${LLDAP_JWT_SECRET}"
+      LLDAP_LDAP_BASE_DN: "${LDAP_BASE_DN}"
+      LLDAP_LDAP_USER_DN: "${LDAP_BIND_USER}"
+      LLDAP_LDAP_USER_EMAIL: "${ADMIN_CONTACT_LETSENCRYPT}"
+      LLDAP_LDAP_USER_PASS: "${LDAP_BIND_PASSWORD}"
+      LLDAP_ENABLE_PASSWORT_RESET: false
+      #LLDAP_SMTP_OPTIONS__SERVER: "${SMTP_HOST}"
+      #LLDAP_SMTP_OPTIONS__PORT: "${SMTP_PORT}"
+      #LLDAP_SMTP_OPTIONS__USER: "${SMTP_USERNAME}"
+      #LLDAP_SMTP_OPTIONS__PASSWORD: "${SMTP_PASSWORD}"
+      #LLDAP_SMTP_OPTIONS__FROM: "${SMTP_FROM_ADDRESS}"
+      #LLDAP_SMTP_OPTIONS__REPLY_TO: "${SMTP_FROM_ADDRESS}"
+      UID: "0"
+      GID: "0"
+    labels:
+      traefik.enable: "true"
+      #traefik.http.routers.lldap.entrypoints: "web"
+      traefik.http.routers.lldap.entrypoints: "websecure"
+      traefik.http.routers.lldap.tls.certresolver: "myresolver"
+      traefik.http.routers.lldap.rule: "Host(`${LLDAP_HOSTNAME}`)"
+    # NOTE: lldap does not expose ports automatically
+    expose:
+      - "80"
+      - "${LDAP_PORT}"
+    #ports:
+    #  - "3890:3890"
+    #  #- "6360:6360"
+    #  - "17170:17170"
+    volumes:
+      - ./data/lldap:/data:rw
+
+  # ------------------------------------------------------
+  # etherpad
+  # ------------------------------------------------------
+
+  postgres-etherpad:
+    image: postgres:latest
+    container_name: postgres-etherpad
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "etherpad"
+      POSTGRES_USER: "etherpad"
+      POSTGRES_PASSWORD: "${ETHERPAD_POSTGRES_PASSWORD}"
+    healthcheck:
+      test: [ "CMD-SHELL", "psql -U etherpad -lqt | cut -d \\| -f 1 | grep -wq etherpad" ]
+    #ports:
+    #  - "5432:5432"
+    volumes:
+      - ./data/etherpad:/var/lib/postgresql/data:rw
+
+  nginx-etherpad:
+    image: nginx:latest
+    container_name: nginx-etherpad
+    restart: unless-stopped
+    depends_on:
+      - traefik
+      - etherpad
+    labels:
+      traefik.enable: "true"
+      #traefik.http.routers.nginx-etherpad.entrypoints: "web"
+      traefik.http.routers.nginx-etherpad.entrypoints: "websecure"
+      traefik.http.routers.nginx-etherpad.tls.certresolver: "myresolver"
+      traefik.http.routers.nginx-etherpad.rule: "Host(`${ETHERPAD_HOSTNAME}`)"
+    #ports:
+    #  - "9001:80"
+    volumes:
+      - ./config/nginx-etherpad.conf:/etc/nginx/conf.d/default.conf:ro
+
+  etherpad:
+    build:
+      context: ./etherpad-lite
+      args:
+        #ETHERPAD_PLUGINS: "ep_adminpads2 ep_comments_page ep_headings2 ep_markdown ep_mypads"
+        ETHERPAD_PLUGINS: "ep_mypads"
+    container_name: etherpad
+    restart: unless-stopped
+    # NOTE: if using authentik as identity provider, update the ldapauth-fork dependency in ep_mypads
+    #command: sh -c "cd node_modules/ep_mypads/ && npm install ldapauth-fork@^5.0.5 && etherpad"
+    depends_on:
+      postgres-etherpad:
+        condition: service_healthy
+    #ports:
+    #  - "9001:9001"
+    volumes:
+      - ./config/etherpad.json:/opt/etherpad-lite/settings.json:ro
+      - ./etherpad-skin-medienhaus:/opt/etherpad-lite/src/static/skins/medienhaus:ro
+
+  # ------------------------------------------------------
+  # spacedeck
+  # ------------------------------------------------------
+
+  #postgres-spacedeck:
+  #  image: postgres:latest
+  #  container_name: postgres-spacedeck
+  #  restart: unless-stopped
+  #  environment:
+  #    POSTGRES_DB: "spacedeck"
+  #    POSTGRES_USER: "spacedeck"
+  #    POSTGRES_PASSWORD: "${SPACEDECK_POSTGRES_PASSWORD}"
+  #  healthcheck:
+  #    test: [ "CMD-SHELL", "psql -U spacedeck -lqt | cut -d \\| -f 1 | grep -wq spacedeck" ]
+  #  #ports:
+  #  #  - "5432:5432"
+  #  volumes:
+  #    - ./data/spacedeck/database:/var/lib/postgresql/data:rw
+
+  #nginx-spacedeck:
+  #  image: nginx:latest
+  #  container_name: nginx-spacedeck
+  #  restart: unless-stopped
+  #  depends_on:
+  #    - traefik
+  #    - spacedeck
+  #  labels:
+  #    traefik.enable: "true"
+  #    #traefik.http.routers.nginx-spacedeck.entrypoints: "web"
+  #    traefik.http.routers.nginx-spacedeck.entrypoints: "websecure"
+  #    traefik.http.routers.nginx-spacedeck.tls.certresolver: "myresolver"
+  #    traefik.http.routers.nginx-spacedeck.rule: "Host(`${SPACEDECK_HOSTNAME}`)"
+  #  #ports:
+  #  #  - "9666:80"
+  #  volumes:
+  #    - ./config/nginx-spacedeck.conf:/etc/nginx/conf.d/default.conf:ro
+
+  #spacedeck:
+  #  build: ./spacedeck-open
+  #  container_name: spacedeck
+  #  restart: unless-stopped
+  #  stop_grace_period: 1s
+  #  depends_on:
+  #    postgres-spacedeck:
+  #      condition: service_healthy
+  #  #ports:
+  #  #  - "9666:9666"
+  #  volumes:
+  #    - ./config/spacedeck.json:/app/config/default.json:ro
+  #    - ./data/spacedeck/storage:/app/storage:rw
+
+  # ------------------------------------------------------
+  # matrix-synapse
+  # ------------------------------------------------------
+
+  postgres-matrix-synapse:
+    image: postgres:latest
+    container_name: postgres-matrix-synapse
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "synapse"
+      POSTGRES_USER: "synapse"
+      POSTGRES_PASSWORD: "${MATRIX_POSTGRES_PASSWORD}"
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    healthcheck:
+      test: [ "CMD-SHELL", "psql -U synapse -lqt | cut -d \\| -f 1 | grep -wq synapse" ]
+    #ports:
+    #  - "5432:5432"
+    volumes:
+      - ./data/matrix-synapse/database:/var/lib/postgresql/data:rw
+
+  nginx-matrix-synapse:
+    image: nginx:latest
+    container_name: nginx-matrix-synapse
+    restart: unless-stopped
+    depends_on:
+      - traefik
+      - matrix-synapse
+    labels:
+      traefik.enable: "true"
+      #traefik.http.routers.nginx-matrix-synapse.entrypoints: "web"
+      traefik.http.routers.nginx-matrix-synapse.entrypoints: "websecure"
+      traefik.http.routers.nginx-matrix-synapse.tls.certresolver: "myresolver"
+      traefik.http.routers.nginx-matrix-synapse.rule: "Host(`${MATRIX_BASEURL}`)"
+    #ports:
+    #  - "8008:80"
+    #  #- "8448:443"
+    volumes:
+      - ./config/nginx-matrix-synapse.conf:/etc/nginx/conf.d/default.conf:ro
+
+  matrix-synapse:
+    image: matrixdotorg/synapse:latest
+    container_name: matrix-synapse
+    restart: unless-stopped
+    depends_on:
+      postgres-matrix-synapse:
+        condition: service_healthy
+    environment:
+      SYNAPSE_CONFIG_DIR: "/etc/matrix-synapse"
+      SYNAPSE_CONFIG_PATH: "/etc/matrix-synapse/homeserver.yaml"
+      SYNAPSE_DATA_DIR: "/data"
+      UID: "0"
+      GID: "0"
+    #ports:
+    #  - "8008:8008"
+    #  #- "8448:8448"
+    volumes:
+      - ./data/matrix-synapse/synapse:/data:rw
+      - ./config/matrix-synapse.yaml:/etc/matrix-synapse/homeserver.yaml:ro
+
+  #synapse-admin:
+  #  build:
+  #    context: https://github.com/Awesome-Technologies/synapse-admin.git
+  #    args:
+  #      REACT_APP_SERVER: "${HTTP_SCHEMA}://${MATRIX_SERVERNAME}"
+  #      BUILDKIT_CONTEXT_KEEP_GIT_DIR: 1
+  #      #NODE_OPTIONS: "--max_old_space_size=1024"
+  #      #BASE_PATH: "/synapse-admin"
+  #  container_name: synapse-admin
+  #  restart: unless-stopped
+  #  depends_on:
+  #    - traefik
+  #  labels:
+  #    traefik.enable: "true"
+  #    #traefik.http.routers.synapse-admin.entrypoints: "web"
+  #    traefik.http.routers.synapse-admin.entrypoints: "websecure"
+  #    traefik.http.routers.synapse-admin.tls.certresolver: "myresolver"
+  #    traefik.http.routers.synapse-admin.rule: "Host(`synapse-admin.${SPACES_HOSTNAME}`)"
+  #  #ports:
+  #  #  - "8080:80"
+
+  # ------------------------------------------------------
+  # element
+  # ------------------------------------------------------
+
+  element:
+    image: vectorim/element-web:v1.11.57
+    container_name: element
+    restart: unless-stopped
+    depends_on:
+      - traefik
+      - matrix-synapse
+    labels:
+      traefik.enable: "true"
+      #traefik.http.routers.element.entrypoints: "web"
+      traefik.http.routers.element.entrypoints: "websecure"
+      traefik.http.routers.element.tls.certresolver: "myresolver"
+      traefik.http.routers.element.rule: "Host(`${ELEMENT_HOSTNAME}`)"
+      traefik.http.routers.element.middlewares: "element-headers@docker"
+      # @NOTE: element-web configuration best practices according to the repository’s README
+      # https://github.com/element-hq/element-web?tab=readme-ov-file#configuration-best-practices
+      # https://doc.traefik.io/traefik/middlewares/http/headers/#general
+      traefik.http.middlewares.element-headers.headers.customframeoptionsvalue: "sameorigin"
+      traefik.http.middlewares.element-headers.headers.contenttypenosniff: "true"
+      traefik.http.middlewares.element-headers.headers.browserxssfilter: "true"
+      traefik.http.middlewares.element-headers.headers.contentsecuritypolicy: "frame-ancestors 'self'"
+    volumes:
+      - ./config/element.json:/app/config.json:ro
+
+# ------------------------------------------------------
+# networks
+# ------------------------------------------------------
+
+networks:
+  default:
+    name: overlay
+    driver: overlay
+    external: true
+
+# ------------------------------------------------------
+# volumes (example)
+# ------------------------------------------------------
+
+#volumes:
+#  medienhaus-spaces--node_modules:
+#    driver: local
+#  medienhaus-spaces--.next:
+#    driver: local
