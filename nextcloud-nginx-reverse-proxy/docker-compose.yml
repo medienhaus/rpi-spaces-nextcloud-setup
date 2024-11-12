@@ -1,0 +1,55 @@
+services:
+
+  # ------------------------------------------------------
+  # nginx
+  # ------------------------------------------------------
+
+  nextcloud-nginx-reverse-proxy:
+    image: nginx:latest
+    container_name: nextcloud-nginx-reverse-proxy
+    restart: unless-stopped
+    #
+    # @NOTE: depends on traefik, which is managed/run
+    # via `/opt/medienhaus-docker/docker-compose.yml`
+    #
+    # @NOTE: depends on nextcloud-app, which is managed/run
+    # via `/opt/nextcloud/docker-compose.yml` (remote host)
+    #
+    #depends_on:
+    #  - traefik
+    #  - nextcloud-app
+    labels:
+      traefik.enable: "true"
+      #traefik.http.routers.nextcloud-nginx-reverse-proxy.entrypoints: "web"
+      traefik.http.routers.nextcloud-nginx-reverse-proxy.entrypoints: "websecure"
+      traefik.http.routers.nextcloud-nginx-reverse-proxy.tls.certresolver: "myresolver"
+      traefik.http.routers.nextcloud-nginx-reverse-proxy.rule: "Host(`${BASE_URL}`)"
+      # @NOTE: https://docs.nextcloud.com/server/30/admin_manual/configuration_server/reverse_proxy_configuration.html#traefik-2
+      traefik.http.routers.nextcloud.middlewares: "nextcloud_redirectregex"
+      traefik.http.middlewares.nextcloud_redirectregex.redirectregex.permanent: true
+      traefik.http.middlewares.nextcloud_redirectregex.redirectregex.regex: "https://(.*)/.well-known/(?:card|cal)dav"
+      #traefik.http.middlewares.nextcloud_redirectregex.redirectregex.regex: "^/.well-known/(?:card|cal)dav"
+      traefik.http.middlewares.nextcloud_redirectregex.redirectregex.replacement: "https://$${1}/remote.php/dav"
+      #traefik.http.middlewares.nextcloud_redirectregex.redirectregex.replacement: "/remote.php/dav"
+    #ports:
+    #  - "9001:80"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+# ------------------------------------------------------
+# networks
+# ------------------------------------------------------
+
+networks:
+  default:
+    name: overlay
+    driver: overlay
+    external: true
+
+# ------------------------------------------------------
+# volumes (example)
+# ------------------------------------------------------
+
+#volumes:
+#  nginx_data:
+#    driver: local

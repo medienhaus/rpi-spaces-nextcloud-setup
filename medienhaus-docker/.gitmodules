@@ -1,0 +1,24 @@
+[submodule "etherpad-lite"]
+	path = etherpad-lite
+	url = https://github.com/ether/etherpad-lite.git
+	branch = master
+[submodule "etherpad-skin-medienhaus"]
+	path = etherpad-skin-medienhaus
+	url = https://github.com/medienhaus/etherpad-skin-medienhaus.git
+	branch = main
+[submodule "spacedeck-open"]
+	path = spacedeck-open
+	url = https://github.com/medienhaus/spacedeck-open.git
+	branch = mnt
+[submodule "medienhaus-spaces"]
+	path = medienhaus-spaces
+	url = https://github.com/medienhaus/medienhaus-spaces.git
+	branch = develop
+[submodule "medienhaus-api"]
+	path = medienhaus-api
+	url = https://github.com/medienhaus/medienhaus-api.git
+	branch = main
+[submodule "medienhaus-cms"]
+	path = medienhaus-cms
+	url = https://github.com/medienhaus/medienhaus-cms.git
+	branch = main
