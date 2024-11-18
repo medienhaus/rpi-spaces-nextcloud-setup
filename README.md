@@ -164,8 +164,24 @@ In our first proof-of-concept and momentarily to be evaluated prototype, we are 
    ```
    </details>
 
+   🧩 Add LDAP configuration to `.env` file:
+
+   💭 Copy & paste `LDAP_*` environment variables from [/medienhaus-docker/.env](medienhaus-docker/.env)❗️
+
+   ```bash
+   ${VISUAL:-${EDITOR:-vim}} .env
+   ```
+
    **Then start the Docker composition.**
 
    ```bash
    docker compose up -d
+   ```
+
+   🏗️ Finish `nextcloud` installation in your browser via `https://nextcloud.example.org`❗️
+
+   **Then apply LDAP configuration.**
+
+   ```bash
+   docker exec -u 33 nextcloud-app /opt/enable-and-configure-ldap.sh
    ```
