@@ -97,12 +97,16 @@ In our first proof-of-concept and momentarily to be evaluated prototype, we are 
    cp .env.example .env
    ```
 
+   Configure `.env` file:
+
    ```bash
    ${VISUAL:-${EDITOR:-vim}} .env
    ```
 
    ⚠️ For *production*, please change the following environment variables❗️
       - `BASE_URL` to your *fully qualified domain name*, e.g. `nextcloud.example.org`
+
+   Configure `nginx` configuration file:
 
    ```bash
    ${VISUAL:-${EDITOR:-vim}} config/nginx.conf
@@ -120,14 +124,14 @@ In our first proof-of-concept and momentarily to be evaluated prototype, we are 
 > [!IMPORTANT]
 > On the **second** Raspberry Pi 5 single-board computer hosting `nextcloud`:
 
-1. Clone this repository
+4. Clone this repository
    <br>
    ```bash
    git clone https://github.com/medienhaus/rpi-spaces-nextcloud-setup.git && \
    cd rpi-spaces-nextcloud-setup/
    ```
 
-2. Configure and start [nextcloud](/nextcloud/)
+5. Configure and start [nextcloud](/nextcloud/)
    <br>
    ```bash
    cd nextcloud/ && \
@@ -166,11 +170,11 @@ In our first proof-of-concept and momentarily to be evaluated prototype, we are 
 
    🧩 Add LDAP configuration to `.env` file:
 
-   💭 Copy & paste `LDAP_*` environment variables from [/medienhaus-docker/.env](medienhaus-docker/.env)❗️
-
    ```bash
    ${VISUAL:-${EDITOR:-vim}} .env
    ```
+
+   **TIP:** Copy & paste `LDAP_*` configuration from [/medienhaus-docker/.env](medienhaus-docker/.env) on the **first** Raspberry Pi 5❗️
 
    **Then start the Docker composition.**
 
